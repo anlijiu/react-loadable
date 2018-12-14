@@ -5,6 +5,9 @@ const PropTypes = require("prop-types");
 const ALL_INITIALIZERS = [];
 const READY_INITIALIZERS = [];
 
+const LoadableContext = React.createContext({});
+const { Provider, Consumer } = LoadableContext;
+
 function isWebpackReady(getModuleIds) {
   if (typeof __webpack_modules__ !== "object") {
     return false;
@@ -134,7 +137,7 @@ function createLoadableComponent(loadFn, options) {
     });
   }
 
-  return class LoadableComponent extends React.Component {
+  class LoadableComponent extends React.Component {
     constructor(props) {
       super(props);
       init();
@@ -148,12 +151,6 @@ function createLoadableComponent(loadFn, options) {
       };
     }
 
-    static contextTypes = {
-      loadable: PropTypes.shape({
-        report: PropTypes.func.isRequired
-      })
-    };
-
     static preload() {
       return init();
     }
@@ -164,9 +161,9 @@ function createLoadableComponent(loadFn, options) {
     }
 
     _loadModule() {
-      if (this.context.loadable && Array.isArray(opts.modules)) {
+      if (this.props.context.loadable && Array.isArray(opts.modules)) {
         opts.modules.forEach(moduleName => {
-          this.context.loadable.report(moduleName);
+          this.props.context.loadable.report(moduleName);
         });
       }
 
@@ -245,6 +242,17 @@ function createLoadableComponent(loadFn, options) {
       }
     }
   };
+
+  return function Content(props) {
+    return (
+      // Syntax to consume the context     
+      <Consumer>
+        {context=> (
+        <LoadableComponent context={context} {...props} />
+        )}
+      </Consumer>
+      );
+  }
 }
 
 function Loadable(opts) {
@@ -266,22 +274,17 @@ class Capture extends React.Component {
     report: PropTypes.func.isRequired
   };
 
-  static childContextTypes = {
-    loadable: PropTypes.shape({
-      report: PropTypes.func.isRequired
-    }).isRequired
-  };
-
-  getChildContext() {
-    return {
+  render() {
+    const value = {
       loadable: {
         report: this.props.report
       }
-    };
-  }
-
-  render() {
-    return React.Children.only(this.props.children);
+    }
+    return (
+      <Provider value={value}>
+        {this.props.children}
+      </Provider>
+    );
   }
 }
 
