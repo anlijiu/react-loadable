@@ -7,25 +7,38 @@ function buildManifest(compiler, compilation) {
   let context = compiler.options.context;
   let manifest = {};
 
-  compilation.chunks.forEach(chunk => {
-    chunk.files.forEach(file => {
-      chunk.forEachModule(module => {
-        let id = module.id;
-        let name = typeof module.libIdent === 'function' ? module.libIdent({ context }) : null;
+  for (const chunkGroup of compilation.chunkGroups) {
+    let files = []
+    for (const chunk of chunkGroup.chunks) {
+      for (const file of chunk.files) {
         let publicPath = url.resolve(compilation.outputOptions.publicPath || '', file);
-        
-        let currentModule = module;
-        if (module.constructor.name === 'ConcatenatedModule') {
-          currentModule = module.rootModule;
-        }
-        if (!manifest[currentModule.rawRequest]) {
-          manifest[currentModule.rawRequest] = [];
-        }
+        files.push({
+          file,
+          publicPath,
+          chunkName: chunk.name,
+        })
+      }
+    }
 
-        manifest[currentModule.rawRequest].push({ id, name, file, publicPath });
-      });
-    });
-  });
+    for (const block of chunkGroup.blocksIterable) {
+      let name
+      let id = null
+      let dependency = block.module.dependencies.find(dep => block.request === dep.request)
+
+      if (dependency) {
+        let module = dependency.module
+        id = module.id
+        name = typeof module.libIdent === 'function' ? module.libIdent({ context }) : null
+      }
+
+      for (const file of files) {
+        file.id = id
+        file.name = name
+      }
+
+      manifest[block.request] = files
+    }
+  }
 
   return manifest;
 }
@@ -36,7 +49,7 @@ class ReactLoadablePlugin {
   }
 
   apply(compiler) {
-    compiler.plugin('emit', (compilation, callback) => {
+    compiler.hooks.emit.tapAsync('ReactLoadablePlugin', (compilation, callback) => {
       const manifest = buildManifest(compiler, compilation);
       var json = JSON.stringify(manifest, null, 2);
       const outputDirectory = path.dirname(this.filename);
